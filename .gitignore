@@ -1,3 +1,5 @@
 .venv
 reranker-sweep
 reranker-sweep.zip
+__output__/
+__pycache__/
