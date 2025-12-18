@@ -114,6 +114,7 @@ You are FREE to use tools in any order and as many times as needed. Common strat
 - After execute_dsl returns a result, give your answer immediately
 - If execution fails, try to fix the program or generate a new one
 - Maximum 6-8 tool calls, then you MUST give your best answer
+- BE CONCISE - do not write long explanations
 
 ## Output Format
 When you have the answer, respond with:
@@ -319,8 +320,14 @@ def create_agent_graph(
 ) -> StateGraph:
     """Create the LangGraph agent."""
     
-    # Initialize LLM
-    llm = ChatOllama(model=model, temperature=0)
+    # Initialize LLM with thinking disabled for Qwen3 models
+    # This significantly speeds up inference by avoiding extended reasoning
+    extra_kwargs = {"think": False} if "qwen3" in model.lower() else {}
+    llm = ChatOllama(
+        model=model, 
+        temperature=0,
+        **extra_kwargs,
+    )
     
     # Create tools and bind to LLM
     tools = create_tools(logger)
