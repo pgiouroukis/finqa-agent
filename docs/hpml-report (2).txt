@@ -1,0 +1,28 @@
+Here is a template you can use for your final report. 
+
+Introduction
+A. Background and Motivation
+B. Problem Statement
+C. Objectives and Scope
+II. Literature Review
+A. Review of Relevant Literature 
+B. Identification of Gaps in Existing Research (Optional)
+III. Methodology
+A. Data Collection and Preprocessing if any done
+B. Model Selection
+C. Optimization Procedure(s). Are you optimizing training or inference or both
+D. Profiling tools and methods
+E. Evaluation Metrics
+IV. Experimental Results
+A. Experimental Setup
+B. Performance Comparison (before and after optimizations)of Different Models D. Analysis of Results
+V. Discussion
+A. Interpretation of Results
+B. Comparison with Previous Studies
+C. Challenges and Limitations 
+D. Future Directions
+VI. Conclusion
+A. Summary of Findings
+B. Contributions 
+C. Recommendations for Future Research
+VII. References A. List of Citations and Sources Used (including papers and source code)
