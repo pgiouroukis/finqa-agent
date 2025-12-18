@@ -245,3 +245,168 @@ def clean_prediction_text(text: str, eos_token: str | None = None) -> str:
     if eos_token and eos_token in cleaned:
         cleaned = cleaned.split(eos_token, 1)[0].strip()
     return cleaned
+
+
+def equal_program(program1: Sequence[str], program2: Sequence[str]) -> bool:
+    """
+    Check if two DSL programs are symbolically equivalent.
+    
+    Uses sympy to simplify and compare the symbolic expressions.
+    This handles cases where programs are written differently but
+    compute the same result (e.g., add(a,b) == add(b,a)).
+    """
+    try:
+        from sympy import simplify
+    except ImportError:
+        # Fall back to simple string comparison if sympy not available
+        return program1 == program2
+    
+    sym_map: Dict[str, str] = {}
+    program1 = list(program1[:-1])  # remove EOF
+    program1_str = "|".join(program1)
+    steps = program1_str.split(")")[:-1]
+    step_dict_1: Dict[int, str] = {}
+    sym_ind = 0
+
+    for ind, step in enumerate(steps):
+        step = step.strip()
+        if len(step.split("(")) > 2:
+            return False
+        op = step.split("(")[0].strip("|").strip()
+        args = step.split("(")[1].strip("|").strip()
+        arg1 = args.split("|")[0].strip()
+        arg2 = args.split("|")[1].strip()
+        step_dict_1[ind] = step
+        if "table" in op:
+            if step not in sym_map:
+                sym_map[step] = f"a{sym_ind}"
+                sym_ind += 1
+        else:
+            if "#" not in arg1 and arg1 not in sym_map:
+                sym_map[arg1] = f"a{sym_ind}"
+                sym_ind += 1
+            if "#" not in arg2 and arg2 not in sym_map:
+                sym_map[arg2] = f"a{sym_ind}"
+                sym_ind += 1
+
+    step_dict_2: Dict[int, str] = {}
+    try:
+        program2 = list(program2[:-1])
+        for ind, token in enumerate(program2):
+            if ind % 4 == 0 and token.strip("(") not in ALL_OPS:
+                return False
+            if (ind + 1) % 4 == 0 and token != ")":
+                return False
+        program2_str = "|".join(program2)
+        steps = program2_str.split(")")[:-1]
+        for ind, step in enumerate(steps):
+            step = step.strip()
+            if len(step.split("(")) > 2:
+                return False
+            op = step.split("(")[0].strip("|").strip()
+            args = step.split("(")[1].strip("|").strip()
+            arg1 = args.split("|")[0].strip()
+            arg2 = args.split("|")[1].strip()
+            step_dict_2[ind] = step
+            if "table" in op:
+                if step not in sym_map:
+                    return False
+            else:
+                if "#" not in arg1:
+                    if arg1 not in sym_map:
+                        return False
+                elif int(arg1.strip("#")) >= ind:
+                    return False
+                if "#" not in arg2:
+                    if arg2 not in sym_map:
+                        return False
+                elif int(arg2.strip("#")) >= ind:
+                    return False
+    except Exception:
+        return False
+
+    def symbol_recur(step: str, step_dict: Dict[int, str]) -> str:
+        step = step.strip()
+        op = step.split("(")[0].strip("|").strip()
+        args = step.split("(")[1].strip("|").strip()
+        arg1 = args.split("|")[0].strip()
+        arg2 = args.split("|")[1].strip()
+        if "table" in op:
+            return sym_map[step]
+        if "#" in arg1:
+            arg1_part = symbol_recur(step_dict[int(arg1.replace("#", ""))], step_dict)
+        else:
+            arg1_part = sym_map[arg1]
+        if "#" in arg2:
+            arg2_part = symbol_recur(step_dict[int(arg2.replace("#", ""))], step_dict)
+        else:
+            arg2_part = sym_map[arg2]
+        if op == "add":
+            return f"( {arg1_part} + {arg2_part} )"
+        if op == "subtract":
+            return f"( {arg1_part} - {arg2_part} )"
+        if op == "multiply":
+            return f"( {arg1_part} * {arg2_part} )"
+        if op == "divide":
+            return f"( {arg1_part} / {arg2_part} )"
+        if op == "exp":
+            return f"( {arg1_part} ** {arg2_part} )"
+        if op == "greater":
+            return f"( {arg1_part} > {arg2_part} )"
+        return ""
+
+    steps_prog1 = program1_str.split(")")[:-1]
+    sym_prog1 = symbol_recur(steps_prog1[-1], step_dict_1)
+    sym_prog1 = simplify(sym_prog1, evaluate=False)
+    try:
+        steps_prog2 = program2_str.split(")")[:-1]
+        sym_prog2 = symbol_recur(steps_prog2[-1], step_dict_2)
+        sym_prog2 = simplify(sym_prog2, evaluate=False)
+    except Exception:
+        return False
+    return sym_prog1 == sym_prog2
+
+
+def evaluate_program_prediction(
+    prediction: str,
+    gold_program: str,
+    gold_numerical,
+    table: Sequence[Sequence[str]] | None,
+) -> Dict[str, Any]:
+    """
+    Evaluate a predicted DSL program against the gold program.
+    
+    Returns:
+        Dict with:
+        - predicted_numerical: The result of executing the predicted program
+        - execution_accuracy: True if predicted result equals gold result
+        - program_accuracy: True if programs are symbolically equivalent
+        - execution_error: Any error message
+    """
+    pred_tokens = program_tokenization(prediction)
+    gold_tokens = program_tokenization(gold_program)
+    invalid_flag, exe_res = eval_program(pred_tokens, table or [])
+    exec_error = None
+    
+    # Check execution accuracy (numerical match)
+    execution_accuracy = invalid_flag == 0 and exe_res == gold_numerical
+    
+    # Check program accuracy (symbolic equivalence)
+    try:
+        program_accuracy = equal_program(gold_tokens, pred_tokens)
+    except Exception as exc:
+        program_accuracy = False
+        exec_error = f"program_equivalence_failed: {exc}"
+    
+    if invalid_flag:
+        exec_error = exec_error or "invalid program or execution failure"
+    if program_accuracy and invalid_flag == 0 and exe_res != gold_numerical:
+        exec_error = exec_error or "equivalent program but execution mismatch"
+    
+    return {
+        "predicted_numerical": None if invalid_flag else exe_res,
+        "execution_accuracy": execution_accuracy,
+        "program_accuracy": program_accuracy,
+        "execution_error": exec_error,
+    }
+

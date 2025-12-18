@@ -50,15 +50,20 @@ def print_result(result: dict, console: Console) -> None:
     
     table = Table(show_header=True, header_style="bold")
     table.add_column("", style="bold")
-    table.add_column("Answer", max_width=60)
-    table.add_row("🤖 Agent", result.get("agent_answer", "N/A")[:60])
-    table.add_row("✅ Golden", result.get("golden_answer", "N/A")[:60])
+    table.add_column("DSL Program", max_width=70)
+    
+    table.add_row("🔧 Generator Output", str(result.get("generated_program", "N/A"))[:70])
+    table.add_row("📋 Golden", str(result.get("golden_program", "N/A"))[:70])
     
     console.print(table)
     
-    match = result.get("agent_answer", "").strip() == result.get("golden_answer", "").strip()
-    match_str = "✅ MATCH" if match else "❌ NO MATCH"
-    console.print(f"[dim]{match_str} | Time: {result.get('elapsed_seconds', '?')}s | Tools: {result.get('tool_call_count', '?')}[/dim]")
+    # Show both metrics
+    gen_acc = result.get("generator_correct", False)
+    agent_acc = result.get("agent_correct", False)
+    gen_str = "✅" if gen_acc else "❌"
+    agent_str = "✅" if agent_acc else "❌"
+    
+    console.print(f"[dim]Generator: {gen_str} | Agent: {agent_str} | Time: {result.get('elapsed_seconds', '?')}s | Tools: {result.get('tool_call_count', '?')}[/dim]")
 
 
 def print_summary(results: list[dict], console: Console) -> None:
@@ -68,22 +73,11 @@ def print_summary(results: list[dict], console: Console) -> None:
         console.print("[yellow]No results to summarize[/yellow]")
         return
     
-    # Simple exact match
-    exact_matches = sum(
-        1 for r in results 
-        if r.get("agent_answer", "").strip() == r.get("golden_answer", "").strip()
-    )
+    # Generator tool accuracy (raw output from generate_dsl tool)
+    generator_correct = sum(1 for r in results if r.get("generator_correct", False))
     
-    # Numeric match (try to parse as numbers)
-    numeric_matches = 0
-    for r in results:
-        try:
-            agent = float(r.get("agent_answer", "").replace("%", "").replace(",", ""))
-            golden = float(r.get("golden_answer", "").replace("%", "").replace(",", ""))
-            if abs(agent - golden) < 0.01:
-                numeric_matches += 1
-        except ValueError:
-            pass
+    # Agent accuracy (final answer output by agent)
+    agent_correct = sum(1 for r in results if r.get("agent_correct", False))
     
     console.print()
     console.print("=" * 60)
@@ -91,12 +85,12 @@ def print_summary(results: list[dict], console: Console) -> None:
     
     table = Table(show_header=True, header_style="bold")
     table.add_column("Metric")
-    table.add_column("Value")
-    table.add_column("Percentage")
+    table.add_column("Count")
+    table.add_column("Accuracy")
     
     table.add_row("Total Queries", str(total), "")
-    table.add_row("Exact Match", str(exact_matches), f"{100*exact_matches/total:.1f}%")
-    table.add_row("Numeric Match", str(numeric_matches), f"{100*numeric_matches/total:.1f}%")
+    table.add_row("[bold cyan]Generator Accuracy[/bold cyan]", str(generator_correct), f"[bold cyan]{100*generator_correct/total:.1f}%[/bold cyan]")
+    table.add_row("[bold green]Agent Accuracy[/bold green]", str(agent_correct), f"[bold green]{100*agent_correct/total:.1f}%[/bold green]")
     
     avg_time = sum(r.get("elapsed_seconds", 0) for r in results) / total
     avg_tools = sum(r.get("tool_call_count", 0) for r in results) / total

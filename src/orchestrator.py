@@ -31,12 +31,14 @@ from .finqa_data import get_all_evidence_pieces, format_evidence_for_generator
 
 _tool_calls: list[str] = []  # Track tool calls for metrics
 _current_entry: dict | None = None  # Current FinQA example being processed
+_generated_program: str | None = None  # Track the last generated DSL program
 
 
 def reset_tool_calls() -> None:
     """Reset tool call tracking for a new query."""
-    global _tool_calls
+    global _tool_calls, _generated_program
     _tool_calls = []
+    _generated_program = None
 
 
 def track_tool_call(tool_name: str) -> None:
@@ -48,6 +50,17 @@ def track_tool_call(tool_name: str) -> None:
 def get_tool_calls() -> list[str]:
     """Get all tool calls for the current query."""
     return _tool_calls.copy()
+
+
+def set_generated_program(program: str) -> None:
+    """Track the generated DSL program."""
+    global _generated_program
+    _generated_program = program
+
+
+def get_generated_program() -> str | None:
+    """Get the last generated DSL program."""
+    return _generated_program
 
 
 def set_current_entry(entry: dict) -> None:
@@ -79,49 +92,46 @@ class AgentState(TypedDict):
 # System Prompt
 # =========================================
 
-SYSTEM_PROMPT = """You are a FinQA Agent - an expert at answering financial questions using numerical reasoning.
+SYSTEM_PROMPT = """You are a FinQA Agent - an expert at generating DSL programs for financial reasoning.
 
 ## Your Task
-Answer questions about financial documents by:
-1. Retrieving relevant evidence from the document
-2. Generating a DSL (Domain Specific Language) program to compute the answer
-3. Executing the DSL program to get the final numerical result
+Generate a Domain Specific Language (DSL) program that answers financial questions. Your goal is to output the correct DSL program, NOT the numerical result.
 
 ## Available Tools
-You have access to these tools (call `list_tools` to see details):
-- `list_tools`: See all available tools and their descriptions
-- `retrieve_evidence`: Find relevant text and table data for your question
-- `generate_dsl`: Create a DSL program based on the question and evidence
-- `execute_dsl`: Run a DSL program to compute the numerical answer
+- `list_tools`: See all available tools
+- `retrieve_evidence`: Find relevant text and table data from the document
+- `generate_dsl`: Generate a DSL program based on question and evidence
+- `execute_dsl`: (Optional) Test your DSL program to verify it works
 
 ## DSL Format
-The DSL supports these operations:
+The DSL supports:
 - `add(a, b)`, `subtract(a, b)`, `multiply(a, b)`, `divide(a, b)`, `exp(a, b)`
 - `greater(a, b)` - returns "yes" or "no"
 - `table_max(row)`, `table_min(row)`, `table_sum(row)`, `table_average(row)`
 - Use `#N` to reference the result of step N (e.g., `divide(#0, 100)`)
+- Use `const_N` for constants (e.g., `const_100` = 100)
 
-Example: `subtract(100, 50), divide(#0, 2)` → Result: 25
+Examples:
+- `divide(637, const_5)` → divides 637 by 5
+- `subtract(100, 50), divide(#0, 2)` → (100-50)/2
 
 ## Strategy
-You are FREE to use tools in any order and as many times as needed. Common strategies:
-1. **Retrieve → Generate → Execute**: Standard flow
-2. **Execute directly**: If you already know the program
-3. **Iterate**: If first attempt fails, try different evidence or program
+1. Retrieve evidence to find the relevant numbers
+2. Generate a DSL program using those numbers
+3. (Optional) Execute to verify correctness
+4. Output your final DSL program
 
 ## IMPORTANT RULES
-- ALWAYS provide a FINAL ANSWER before stopping
-- After execute_dsl returns a result, give your answer immediately
-- If execution fails, try to fix the program or generate a new one
-- Maximum 6-8 tool calls, then you MUST give your best answer
-- BE CONCISE - do not write long explanations
+- Your FINAL ANSWER must be the DSL PROGRAM, not a number
+- Be concise - just output the program
+- Maximum 6-8 tool calls
 
 ## Output Format
-When you have the answer, respond with:
+When you have the program, respond with:
 
-**FINAL ANSWER: [your numerical answer]**
+**FINAL ANSWER: [your DSL program]**
 
-Keep answers SHORT (e.g., "25.5", "-12.3%", "yes", "no").
+Example: **FINAL ANSWER: divide(637, const_5)**
 """
 
 
@@ -250,6 +260,9 @@ def create_tools(logger: AgentLogger) -> list:
         # Generate DSL program
         generator = get_generator()
         gen_result = generator.generate(question, evidence)
+        
+        # Track the generated program for evaluation
+        set_generated_program(gen_result["program"])
         
         elapsed_ms = (time.time() - start) * 1000
         
@@ -523,8 +536,10 @@ class FinQAOrchestrator:
             model=self.model,
         )
         
-        # User message
-        user_message = question
+        # Build user message with full context
+        from .finqa_data import build_context
+        context = build_context(q_data["full_entry"], mode="all")
+        user_message = f"## Question\n{question}\n\n## Document\n{context}"
         self.logger.log_user_message(user_message)
         
         # Initial state
@@ -570,8 +585,30 @@ class FinQAOrchestrator:
         self.logger.log_message_trace(final_state["messages"])
         self.logger.save_messages(final_state["messages"])
         
-        # Get tool calls
+        # Get tool calls and generated program
         tool_calls = get_tool_calls()
+        generated_program = get_generated_program()
+        
+        # Evaluate GENERATOR tool accuracy (raw tool output)
+        from .dsl_executor import evaluate_program_prediction
+        generator_eval = {}
+        if generated_program and q_data.get("program"):
+            generator_eval = evaluate_program_prediction(
+                prediction=generated_program,
+                gold_program=q_data["program"],
+                gold_numerical=q_data.get("exe_ans"),
+                table=q_data.get("table"),
+            )
+        
+        # Evaluate AGENT final answer accuracy (what agent outputs)
+        agent_eval = {}
+        if extracted_answer and q_data.get("program"):
+            agent_eval = evaluate_program_prediction(
+                prediction=extracted_answer,
+                gold_program=q_data["program"],
+                gold_numerical=q_data.get("exe_ans"),
+                table=q_data.get("table"),
+            )
         
         # Build result
         result = {
@@ -580,8 +617,16 @@ class FinQAOrchestrator:
             "agent_answer": extracted_answer,
             "golden_answer": golden_answer,
             "full_response": agent_answer,
+            "generated_program": generated_program,
+            "golden_program": q_data.get("program", ""),
+            # Generator tool metrics
+            "generator_correct": generator_eval.get("program_accuracy", False),
+            # Agent final answer metrics  
+            "agent_correct": agent_eval.get("program_accuracy", False),
+            "execution_accuracy": generator_eval.get("execution_accuracy", False),
+            "predicted_numerical": generator_eval.get("predicted_numerical"),
             "success": success,
-            "error": error,
+            "error": error or generator_eval.get("execution_error"),
             "elapsed_seconds": round(elapsed, 2),
             "tool_calls": tool_calls,
             "tool_call_count": len(tool_calls),
@@ -593,6 +638,10 @@ class FinQAOrchestrator:
             "question": question,
             "agent_answer": extracted_answer,
             "golden_answer": golden_answer,
+            "generated_program": generated_program,
+            "golden_program": q_data.get("program", ""),
+            "generator_correct": generator_eval.get("program_accuracy", False),
+            "agent_correct": agent_eval.get("program_accuracy", False),
         })
         
         self.logger.log_success("Agent completed", result)
@@ -603,7 +652,7 @@ class FinQAOrchestrator:
         return result
     
     def _extract_answer(self, agent_answer: str, messages: list) -> str:
-        """Extract the final answer from agent response."""
+        """Extract the DSL program from agent response."""
         extracted = ""
         
         # Method 1: Look for "FINAL ANSWER:" format
@@ -614,43 +663,43 @@ class FinQAOrchestrator:
             # Remove trailing ** if present
             extracted = extracted.rstrip("*").strip()
         
-        # Method 2: Look for \boxed{...} LaTeX format
-        if not extracted:
-            boxed_matches = re.findall(r'\\boxed\{([^}]+)\}', agent_answer)
-            if boxed_matches:
-                extracted = boxed_matches[-1].strip()
-        
-        # Method 3: Look for bold pattern **answer**
+        # Method 2: Look for DSL pattern in bold **program**
         if not extracted and "**" in agent_answer:
             bold_matches = re.findall(r'\*\*([^*]+)\*\*', agent_answer)
-            if bold_matches:
-                # Filter out non-numeric answers that look like headers
-                for match in reversed(bold_matches):
-                    match = match.strip()
-                    # Skip if it looks like a header/label
-                    if match.lower() in ["final answer", "answer", "result"]:
-                        continue
-                    # Check if it looks numeric or is yes/no
-                    if re.match(r'^-?[\d.,]+%?$', match) or match.lower() in ["yes", "no"]:
-                        extracted = match
-                        break
+            for match in reversed(bold_matches):
+                match = match.strip()
+                # Skip headers
+                if match.lower() in ["final answer", "answer", "result", "dsl program"]:
+                    continue
+                # Check if it looks like a DSL program (contains operation names)
+                if any(op in match.lower() for op in ["add(", "subtract(", "multiply(", "divide(", "exp(", "greater(", "table_"]):
+                    extracted = match
+                    break
         
-        # Method 4: Search all messages for FINAL ANSWER or boxed
+        # Method 3: Look for DSL pattern in code blocks
+        if not extracted:
+            code_matches = re.findall(r'`([^`]+)`', agent_answer)
+            for match in reversed(code_matches):
+                if any(op in match.lower() for op in ["add(", "subtract(", "multiply(", "divide(", "exp(", "greater(", "table_"]):
+                    extracted = match
+                    break
+        
+        # Method 4: Use the tracked generated_program if nothing found in response
+        if not extracted:
+            generated = get_generated_program()
+            if generated:
+                extracted = generated
+        
+        # Method 5: Search all messages for FINAL ANSWER
         if not extracted:
             for msg in reversed(messages):
                 if hasattr(msg, "content") and msg.content:
                     content = str(msg.content)
                     if not content.startswith("{") and not content.startswith("["):
-                        # Try FINAL ANSWER
                         if "FINAL ANSWER:" in content.upper():
                             idx = content.upper().find("FINAL ANSWER:") + len("FINAL ANSWER:")
                             extracted = content[idx:].strip().split("\n")[0]
                             extracted = extracted.rstrip("*").strip()
-                            break
-                        # Try boxed
-                        boxed_matches = re.findall(r'\\boxed\{([^}]+)\}', content)
-                        if boxed_matches:
-                            extracted = boxed_matches[-1].strip()
                             break
         
         return extracted
