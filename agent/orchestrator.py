@@ -15,13 +15,13 @@ import re
 import time
 from typing import Any, Literal, TypedDict
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 
 from .dsl.executor import execute_dsl
-from .preprocess import get_all_evidence_pieces, format_evidence_for_generator
+from .preprocess import get_all_evidence_pieces
 
 
 DEFAULT_RETRIEVER_PATH = "/home/pg2860/hpml-run/reranker-sweep/jjyfsr7j/checkpoint-1200"
@@ -133,7 +133,7 @@ Example: If generate_dsl returns "subtract(11503, 10815)", output:
 # Tools
 # =========================================
 
-def create_tools(logger: AgentLogger) -> list:
+def create_tools() -> list:
     """Create the tools for the FinQA agent."""
     
     @tool
@@ -147,8 +147,7 @@ def create_tools(logger: AgentLogger) -> list:
             Dictionary with tool names and descriptions
         """
         track_tool_call("list_tools")
-        logger.log_tool_call("list_tools", {})
-        
+
         tools_info = {
             "tools": [
                 {
@@ -172,8 +171,7 @@ def create_tools(logger: AgentLogger) -> list:
             ],
             "recommendation": "Typical flow: retrieve_evidence → generate_dsl → execute_dsl. But you can adapt based on results!",
         }
-        
-        logger.log_tool_result("list_tools", tools_info, 0)
+
         return tools_info
     
     @tool
@@ -190,18 +188,13 @@ def create_tools(logger: AgentLogger) -> list:
         Returns:
             Dict with retrieved evidence pieces and their scores
         """
-        from .finqa_tools import get_retriever
-        
+        from .retriever.run import get_retriever
+
         track_tool_call("retrieve_evidence")
-        logger.log_tool_call("retrieve_evidence", {"top_k": top_k})
-        
-        start = time.time()
-        
+
         entry = get_current_entry()
         if entry is None:
-            result = {"error": "No document loaded"}
-            logger.log_tool_result("retrieve_evidence", result, 0)
-            return result
+            return {"error": "No document loaded"}
         
         # Get all evidence pieces from the document
         evidence_dict = get_all_evidence_pieces(entry["full_entry"])
@@ -210,17 +203,12 @@ def create_tools(logger: AgentLogger) -> list:
         # Use the retriever to score and rank
         retriever = get_retriever()
         ranked_evidence = retriever.retrieve(question, evidence_dict, top_k=top_k)
-        
-        elapsed_ms = (time.time() - start) * 1000
-        
-        result = {
+
+        return {
             "question": question,
             "evidence_count": len(evidence_dict),
             "retrieved": ranked_evidence,
         }
-        
-        logger.log_tool_result("retrieve_evidence", result, elapsed_ms)
-        return result
     
     @tool
     def generate_dsl(evidence: str) -> dict[str, Any]:
@@ -238,18 +226,13 @@ def create_tools(logger: AgentLogger) -> list:
         Returns:
             Dict with the generated DSL program
         """
-        from .finqa_tools import get_generator
-        
+        from .dsl.run import get_generator
+
         track_tool_call("generate_dsl")
-        logger.log_tool_call("generate_dsl", {"evidence_input": evidence[:100] + "..." if len(evidence) > 100 else evidence})
-        
-        start = time.time()
-        
+
         entry = get_current_entry()
         if entry is None:
-            result = {"error": "No document loaded"}
-            logger.log_tool_result("generate_dsl", result, 0)
-            return result
+            return {"error": "No document loaded"}
         
         question = entry["question"]
         
@@ -262,18 +245,13 @@ def create_tools(logger: AgentLogger) -> list:
         
         # Track the generated program for evaluation
         set_generated_program(gen_result["program"])
-        
-        elapsed_ms = (time.time() - start) * 1000
-        
-        result = {
+
+        return {
             "question": question,
             "program": gen_result["program"],
             "prompt_tokens": gen_result["prompt_length"],
             "generated_tokens": gen_result["generated_length"],
         }
-        
-        logger.log_tool_result("generate_dsl", result, elapsed_ms)
-        return result
     
     def _resolve_evidence_ids(evidence: str, entry: dict) -> str:
         """
@@ -354,20 +332,12 @@ def create_tools(logger: AgentLogger) -> list:
             Dict with execution result or error message
         """
         track_tool_call("execute_dsl")
-        logger.log_tool_call("execute_dsl", {"program": program})
-        
-        start = time.time()
-        
+
         entry = get_current_entry()
         table = entry.get("table") if entry else None
-        
+
         # Execute the DSL
-        result = execute_dsl(program, table)
-        
-        elapsed_ms = (time.time() - start) * 1000
-        
-        logger.log_tool_result("execute_dsl", result, elapsed_ms)
-        return result
+        return execute_dsl(program, table)
     
     return [list_tools, retrieve_evidence, generate_dsl, execute_dsl_tool]
 
@@ -376,21 +346,7 @@ def create_tools(logger: AgentLogger) -> list:
 # Graph Nodes
 # =========================================
 
-def format_message_for_log(msg: BaseMessage) -> dict[str, Any]:
-    """Format a LangChain message for logging."""
-    result = {
-        "type": type(msg).__name__,
-        "content": str(msg.content)[:500] if hasattr(msg, "content") else str(msg)[:500],
-    }
-    if hasattr(msg, "tool_calls") and msg.tool_calls:
-        result["tool_calls"] = msg.tool_calls
-    if hasattr(msg, "tool_call_id"):
-        result["tool_call_id"] = msg.tool_call_id
-    return result
-
-
 def create_agent_graph(
-    logger: AgentLogger,
     model: str = "qwen3:4b",
 ) -> StateGraph:
     """Create the LangGraph agent."""
@@ -405,41 +361,13 @@ def create_agent_graph(
     )
     
     # Create tools and bind to LLM
-    tools = create_tools(logger)
+    tools = create_tools()
     tools_by_name = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools)
     
     def agent_node(state: AgentState) -> dict:
         """The main agent node - calls the LLM."""
-        messages_for_log = [format_message_for_log(m) for m in state["messages"]]
-        logger.log_agent_prompt(
-            f"Sending {len(state['messages'])} messages to LLM (tool calls: {state['tool_call_count']})",
-            full_messages=messages_for_log
-        )
-        
         response = llm_with_tools.invoke(state["messages"])
-        
-        response_text = str(response.content) if hasattr(response, 'content') else ""
-        tool_calls = response.tool_calls if hasattr(response, 'tool_calls') else []
-        
-        logger.log_agent_response(
-            response_text,
-            raw_response={"content": response_text, "tool_calls": tool_calls}
-        )
-        
-        if tool_calls:
-            for tc in tool_calls:
-                logger.log_plan({
-                    "action": "TOOL_CALL",
-                    "tool": tc["name"],
-                    "args": tc["args"],
-                })
-        else:
-            logger.log_plan({
-                "action": "FINAL_RESPONSE",
-                "content_preview": response_text[:200],
-            })
-        
         return {"messages": state["messages"] + [response]}
     
     def tool_node(state: AgentState) -> dict:
@@ -465,7 +393,6 @@ def create_agent_graph(
                         result = tools_by_name[actual_tool_name].invoke(tool_args)
                         result_str = json.dumps(result, default=str) if isinstance(result, dict) else str(result)
                     except Exception as e:
-                        logger.log_error(f"Tool {tool_name} failed", str(e))
                         result_str = json.dumps({"error": str(e)})
                 else:
                     result_str = json.dumps({"error": f"Unknown tool: {tool_name}"})
@@ -485,7 +412,6 @@ def create_agent_graph(
                 "**FINAL ANSWER: [your answer here]**"
             ))
             new_messages.append(warning_msg)
-            logger.log_decision("LAST_CHANCE", f"Tool call limit ({state['max_tool_calls']}) approaching")
         
         return {
             "messages": messages + new_messages,
@@ -496,16 +422,13 @@ def create_agent_graph(
         """Decide whether to continue to tools or end."""
         messages = state["messages"]
         last_message = messages[-1]
-        
+
         if state["tool_call_count"] >= state["max_tool_calls"]:
-            logger.log_decision("STOPPING", f"Max tool calls ({state['max_tool_calls']}) reached")
             return "end"
-        
+
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-            logger.log_decision("CONTINUE_TO_TOOLS", f"LLM made {len(last_message.tool_calls)} tool call(s)")
             return "tools"
-        
-        logger.log_decision("ENDING", "LLM provided final answer")
+
         return "end"
     
     # Build graph
@@ -543,29 +466,26 @@ class FinQAOrchestrator:
         self.output_dir = output_dir
         self.max_tool_calls = max_tool_calls
         self.generator_path = generator_path
-        self.logger: AgentLogger | None = None
         self.graph = None
         
         # Initialize generator with custom path if provided
         if generator_path:
-            from .finqa_tools import get_generator
+            from .dsl.run import get_generator
             get_generator(generator_path)
     
-    def run(self, query_id: str, data: list[dict], session_id: str | None = None) -> dict[str, Any]:
+    def run(self, query_id: str, data: list[dict]) -> dict[str, Any]:
         """
         Run the QA agent for a query.
-        
+
         Args:
             query_id: The FinQA query ID (index into data)
             data: Loaded FinQA dataset
-            session_id: Optional session ID for logging
-        
+
         Returns:
             Dict with agent_answer, golden_answer, and metrics
         """
-        from .finqa_data import get_question_data
+        from .preprocess import get_question_data
         
-        reset_logger()
         reset_tool_calls()
         
         # Get question data
@@ -577,39 +497,14 @@ class FinQAOrchestrator:
         
         question = q_data["question"]
         golden_answer = q_data["answer"]
-        
-        # Create logger
-        log_session = session_id or f"query_{query_id}"
-        log_dir = f"{self.output_dir}/{log_session}"
-        self.logger = get_logger(output_dir=log_dir, session_id=log_session)
-        
-        # Log configuration
-        self.logger.log_data("Configuration", {
-            "model": self.model,
-            "max_tool_calls": self.max_tool_calls,
-            "query_id": query_id,
-        })
-        
-        self.logger.log_data("Question & Answer", {
-            "query_id": query_id,
-            "question": question,
-            "golden_answer": golden_answer,
-            "golden_program": q_data.get("program", ""),
-        })
-        
-        self.logger.log_system_prompt(SYSTEM_PROMPT)
-        
+
         # Create graph
-        self.graph = create_agent_graph(
-            logger=self.logger,
-            model=self.model,
-        )
-        
+        self.graph = create_agent_graph(model=self.model)
+
         # Build user message with full context
-        from .finqa_data import build_context
+        from .preprocess import build_context
         context = build_context(q_data["full_entry"], mode="all")
         user_message = f"## Question\n{question}\n\n## Document\n{context}"
-        self.logger.log_user_message(user_message)
         
         # Initial state
         initial_state: AgentState = {
@@ -633,7 +528,6 @@ class FinQAOrchestrator:
             success = True
             error = None
         except Exception as e:
-            self.logger.log_error("Agent execution failed", str(e))
             final_state = initial_state
             success = False
             error = str(e)
@@ -649,10 +543,6 @@ class FinQAOrchestrator:
         
         # Try to extract just the answer
         extracted_answer = self._extract_answer(agent_answer, final_state["messages"])
-        
-        # Save traces
-        self.logger.log_message_trace(final_state["messages"])
-        self.logger.save_messages(final_state["messages"])
         
         # Get tool calls and generated program
         tool_calls = get_tool_calls()
@@ -680,7 +570,7 @@ class FinQAOrchestrator:
             )
         
         # Build result
-        result = {
+        return {
             "query_id": query_id,
             "question": question,
             "agent_answer": extracted_answer,
@@ -702,24 +592,6 @@ class FinQAOrchestrator:
             "tool_call_count": len(tool_calls),
             "message_count": len(final_state["messages"]),
         }
-        
-        # Log result
-        self.logger.log_data("ANSWER COMPARISON", {
-            "question": question,
-            "agent_answer": extracted_answer,
-            "golden_answer": golden_answer,
-            "generated_program": generated_program,
-            "golden_program": q_data.get("program", ""),
-            "generator_correct": generator_eval.get("program_accuracy", False),
-            "agent_correct": agent_eval.get("program_accuracy", False),
-        })
-        
-        self.logger.log_success("Agent completed", result)
-        report_path = self.logger.save_final_report(result)
-        result["log_dir"] = str(self.logger.get_log_dir())
-        result["report_path"] = report_path
-        
-        return result
     
     def _extract_answer(self, agent_answer: str, messages: list) -> str:
         """Extract the DSL program from agent response."""
@@ -797,14 +669,14 @@ def main():
     from rich.panel import Panel
     from rich.table import Table
     
-    from .finqa_data import load_finqa_split
+    from .preprocess import load_finqa_split
     
     parser = argparse.ArgumentParser(description="Run the FinQA agent")
     parser.add_argument("--query-id", default="0", help="Query ID to process")
     parser.add_argument("--model", default="qwen3:4b", help="Ollama model name")
     parser.add_argument("--max-tool-calls", type=int, default=10, help="Max tool calls")
     parser.add_argument("--output-dir", default="__output__", help="Output directory")
-    parser.add_argument("--data-path", default="FinQA/dataset/dev.json", help="Path to FinQA data")
+    parser.add_argument("--data-path", default="./data/dev.json", help="Path to FinQA data")
     
     args = parser.parse_args()
     

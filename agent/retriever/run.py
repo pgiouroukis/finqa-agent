@@ -1,4 +1,36 @@
+from pathlib import Path
+
 from sentence_transformers import CrossEncoder
+
+# Default model path: retriever/model relative to this file
+DEFAULT_MODEL_PATH = Path(__file__).parent / "model"
+
+# Singleton instance
+_retriever: "EvidenceRetriever | None" = None
+
+
+def get_retriever(model_path: str | None = None) -> "EvidenceRetriever":
+    """
+    Get or create the evidence retriever singleton.
+
+    Args:
+        model_path: Optional path to the model. Uses local retriever/model by default.
+
+    Returns:
+        EvidenceRetriever instance
+    """
+    global _retriever
+    if _retriever is None:
+        path = model_path or str(DEFAULT_MODEL_PATH)
+        _retriever = EvidenceRetriever(model_path=path)
+    return _retriever
+
+
+def reset_retriever() -> None:
+    """Reset the singleton instance (useful for testing)."""
+    global _retriever
+    _retriever = None
+
 
 class EvidenceRetriever:
     """

@@ -265,7 +265,7 @@ class AgentLogger:
     def generate_html_trace(self) -> str:
         """Generate an HTML trace visualization."""
         try:
-            from .html_trace_generator import generate_html_trace
+            from .trace_generator import generate_html_trace
             html_path = generate_html_trace(self.jsonl_file)
             self._log(LogLevel.SUCCESS, f"HTML trace saved to {html_path}")
             return html_path
@@ -300,10 +300,8 @@ class AgentLogger:
         """Return the log directory path."""
         return self.log_dir
 
-
 # Global logger instance (created on first import)
 _logger: AgentLogger | None = None
-
 
 def get_logger(output_dir: str = "output", session_id: str | None = None) -> AgentLogger:
     """Get or create the global logger instance."""

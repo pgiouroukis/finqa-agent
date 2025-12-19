@@ -16,10 +16,6 @@ You will need to install these:
 
     micromamba install -c conda-forge python=[VERSION]
 
-Install `poetry` for dependency management.
+Install requirements.
 
-    pipx install poetry
-
-Install all dependencies.
-
-    poetry install
+    pip install -r requirements.txt

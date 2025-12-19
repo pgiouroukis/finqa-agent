@@ -15,7 +15,6 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-
 def create_experiment_folder(base_dir: str, orchestrator: str, generator_path: str | None = None) -> Path:
     """Create a descriptive experiment folder with model names."""
     # Extract generator name from path
@@ -172,7 +171,7 @@ def main():
     if args.data_path:
         data_path = args.data_path
     else:
-        data_path = f"FinQA/dataset/{args.split}.json"
+        data_path = f"./data/{args.split}.json"
     
     # Load data
     console.print(f"[dim]Loading data from {data_path}...[/dim]")
@@ -223,7 +222,6 @@ def main():
             result = orchestrator.run(
                 query_id=query_id,
                 data=data,
-                session_id=f"query_{query_id}",
             )
             results.append(result)
             

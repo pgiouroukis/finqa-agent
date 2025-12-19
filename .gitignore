@@ -11,8 +11,15 @@
 
 **/keys
 
+**/__output__/
+
 # DSL model (on HF: https://huggingface.co/petrosg/qwen2-5-coder-3b-instruct-full-input_gold-output_program/tree/main)
 **/dsl/model/
+
+# Retriever model (on HF: )
+**/retriever/model/
+
+agent/retriever/model/
 
 # AWS
 **/.aws
