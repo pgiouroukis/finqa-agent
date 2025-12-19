@@ -176,7 +176,7 @@ def main():
     
     # Load data
     console.print(f"[dim]Loading data from {data_path}...[/dim]")
-    from src.finqa_data import load_finqa_split
+    from agent.preprocess import load_finqa_split
     data = load_finqa_split(data_path, max_samples=args.max_samples if not args.single else 0)
     console.print(f"[dim]Loaded {len(data)} examples[/dim]")
     
@@ -197,7 +197,7 @@ def main():
     console.print(f"[dim]Experiment folder: {exp_dir}[/dim]")
     
     # Import orchestrator (triggers model loading)
-    from src.orchestrator import FinQAOrchestrator
+    from agent.orchestrator import FinQAOrchestrator
     
     orchestrator = FinQAOrchestrator(
         model=args.model,

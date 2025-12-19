@@ -11,6 +11,9 @@
 
 **/keys
 
+# DSL model (on HF: https://huggingface.co/petrosg/qwen2-5-coder-3b-instruct-full-input_gold-output_program/tree/main)
+**/dsl/model/
+
 # AWS
 **/.aws
 

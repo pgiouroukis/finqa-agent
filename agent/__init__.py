@@ -8,7 +8,6 @@ Provides an agentic system for answering financial questions using:
 """
 
 from .orchestrator import FinQAOrchestrator
-from .finqa_data import load_finqa_split, get_question_data
 from .dsl.executor import execute_dsl, program_tokenization, eval_program
 from .finqa_tools import EvidenceRetriever, DSLGenerator, get_retriever, get_generator
 

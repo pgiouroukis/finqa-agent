@@ -20,9 +20,13 @@ from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 
-from .logger import AgentLogger, get_logger, reset_logger
 from .dsl.executor import execute_dsl
-from .finqa_data import get_all_evidence_pieces, format_evidence_for_generator
+from .preprocess import get_all_evidence_pieces, format_evidence_for_generator
+
+
+DEFAULT_RETRIEVER_PATH = "/home/pg2860/hpml-run/reranker-sweep/jjyfsr7j/checkpoint-1200"
+DEFAULT_GENERATOR_PATH = "/home/pg2860/hpml/__output__/qwen2-5-coder-3b-instruct-full-input_gold-output_program/final_model"
+
 
 # =========================================
 # Module-level State
