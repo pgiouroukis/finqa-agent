@@ -1,0 +1,28 @@
+_wandb:
+    value:
+        cli_version: 0.23.1
+        e:
+            5cxhw2jn8bry9hfw21mx5kom9hbwtrla:
+                codePath: agent/dsl/exucutor_profiling.py
+                codePathLocal: agent/dsl/exucutor_profiling.py
+                email: wm2544@columbia.edu
+                executable: /opt/anaconda3/bin/python
+                git:
+                    commit: d8bddc6ec619dc2e3db815feacee582a9b15098b
+                    remote: https://github.com/pgiouroukis/finqa-agent.git
+                host: Mas-MacBook-Pro.local
+                os: macOS-14.1-arm64-arm-64bit
+                program: /Users/mawenhe/finqa-agent/agent/dsl/exucutor_profiling.py
+                python: CPython 3.12.4
+                root: /Users/mawenhe/finqa-agent
+                startedAt: "2025-12-19T15:47:16.557342Z"
+                writerId: 5cxhw2jn8bry9hfw21mx5kom9hbwtrla
+        m: []
+        python_version: 3.12.4
+        t:
+            "3":
+                - 2
+            "4": 3.12.4
+            "5": 0.23.1
+            "12": 0.23.1
+            "13": darwin-arm64

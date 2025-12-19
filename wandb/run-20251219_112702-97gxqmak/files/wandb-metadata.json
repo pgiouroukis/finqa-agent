@@ -1,0 +1,17 @@
+{
+  "os": "macOS-14.1-arm64-arm-64bit",
+  "python": "CPython 3.12.4",
+  "startedAt": "2025-12-19T16:27:02.403545Z",
+  "program": "/Users/mawenhe/finqa-agent/agent/dsl/exucutor_profiling.py",
+  "codePath": "agent/dsl/exucutor_profiling.py",
+  "codePathLocal": "agent/dsl/exucutor_profiling.py",
+  "git": {
+    "remote": "https://github.com/pgiouroukis/finqa-agent.git",
+    "commit": "d8bddc6ec619dc2e3db815feacee582a9b15098b"
+  },
+  "email": "wm2544@columbia.edu",
+  "root": "/Users/mawenhe/finqa-agent",
+  "host": "Mas-MacBook-Pro.local",
+  "executable": "/opt/anaconda3/bin/python",
+  "writerId": "kcf0b845etjcxl1zebu2i4qxf7sy1cid"
+}
