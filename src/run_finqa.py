@@ -16,10 +16,20 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 
-def create_experiment_folder(base_dir: str) -> Path:
-    """Create a timestamped experiment folder."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    exp_dir = Path(base_dir) / f"exp_{timestamp}"
+def create_experiment_folder(base_dir: str, orchestrator: str, generator_path: str | None = None) -> Path:
+    """Create a descriptive experiment folder with model names."""
+    # Extract generator name from path
+    if generator_path:
+        generator_name = Path(generator_path).name
+    else:
+        generator_name = "qwen2-5-coder-3b-default"
+    
+    # Clean orchestrator name (remove colons, etc.)
+    orch_name = orchestrator.replace(":", "-").replace("/", "-")
+    
+    # Create folder name: orchestrator___generator
+    folder_name = f"{orch_name}___{generator_name}"
+    exp_dir = Path(base_dir) / folder_name
     exp_dir.mkdir(parents=True, exist_ok=True)
     return exp_dir
 
@@ -98,12 +108,28 @@ def print_summary(results: list[dict], console: Console) -> None:
     table.add_row("Avg Tool Calls", f"{avg_tools:.1f}", "")
     
     console.print(table)
+    
+    # Return metrics dict for saving
+    return {
+        "total_queries": total,
+        "generator_correct": generator_correct,
+        "generator_accuracy": round(100 * generator_correct / total, 2),
+        "agent_correct": agent_correct,
+        "agent_accuracy": round(100 * agent_correct / total, 2),
+        "avg_time_seconds": round(avg_time, 2),
+        "avg_tool_calls": round(avg_tools, 2),
+    }
 
 
-def save_results(exp_dir: Path, results: list[dict]) -> None:
-    """Save full results to JSON."""
+def save_results(exp_dir: Path, results: list[dict], metrics: dict | None = None) -> None:
+    """Save full results and aggregate metrics to JSON."""
     with open(exp_dir / "results.json", "w") as f:
         json.dump(results, f, indent=2, default=str)
+    
+    # Save aggregate metrics
+    if metrics:
+        with open(exp_dir / "eval_metrics.json", "w") as f:
+            json.dump(metrics, f, indent=2)
     
     # Also save a simple CSV-like summary
     with open(exp_dir / "results_summary.txt", "w") as f:
@@ -126,6 +152,7 @@ def main():
     parser.add_argument("--single", action="store_true", help="Run single query (default: query-id 0)")
     parser.add_argument("--query-id", default="0", help="Query ID for single mode")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--generator-path", default=None, help="Path to generator model (default: uses trained Qwen2-Coder-3B)")
     
     args = parser.parse_args()
     
@@ -154,8 +181,8 @@ def main():
     console.print(f"[bold]Running {len(query_ids)} queries with model: {args.model}[/bold]")
     console.print()
     
-    # Create experiment folder
-    exp_dir = create_experiment_folder(args.output_dir)
+    # Create experiment folder with descriptive name
+    exp_dir = create_experiment_folder(args.output_dir, args.model, args.generator_path)
     save_config(exp_dir, args)
     console.print(f"[dim]Experiment folder: {exp_dir}[/dim]")
     
@@ -166,6 +193,7 @@ def main():
         model=args.model,
         output_dir=str(exp_dir),
         max_tool_calls=args.max_tool_calls,
+        generator_path=args.generator_path,
     )
     
     # Run queries
@@ -194,11 +222,11 @@ def main():
             
             progress.advance(task)
     
-    # Save results
-    save_results(exp_dir, results)
+    # Print summary and get metrics
+    metrics = print_summary(results, console)
     
-    # Print summary
-    print_summary(results, console)
+    # Save results and metrics
+    save_results(exp_dir, results, metrics)
     
     console.print()
     console.print(f"[bold green]✅ Results saved to: {exp_dir}[/bold green]")

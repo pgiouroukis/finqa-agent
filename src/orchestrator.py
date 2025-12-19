@@ -475,12 +475,19 @@ class FinQAOrchestrator:
         model: str = "qwen3:4b",
         output_dir: str = "__output__",
         max_tool_calls: int = 10,
+        generator_path: str | None = None,
     ):
         self.model = model
         self.output_dir = output_dir
         self.max_tool_calls = max_tool_calls
+        self.generator_path = generator_path
         self.logger: AgentLogger | None = None
         self.graph = None
+        
+        # Initialize generator with custom path if provided
+        if generator_path:
+            from .finqa_tools import get_generator
+            get_generator(generator_path)
     
     def run(self, query_id: str, data: list[dict], session_id: str | None = None) -> dict[str, Any]:
         """

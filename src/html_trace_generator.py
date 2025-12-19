@@ -544,7 +544,7 @@ def generate_html_content(
     # Build full HTML
     query_id = question_data.get("query_id", "?")
     question = question_data.get("question", "N/A")
-    golden_answer = question_data.get("golden_answer", "N/A")
+    golden_program = question_data.get("golden_program", "N/A")
     evidence_pages = question_data.get("evidence_pages", [])
     model = config.get("model", "N/A")
     
@@ -662,6 +662,13 @@ def generate_html_content(
             border-radius: 6px;
             font-size: 0.875rem;
             font-weight: 500;
+        }}
+        
+        .golden-answer code {{
+            background: rgba(0,0,0,0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: var(--font-mono);
         }}
         
         /* Messages */
@@ -1165,7 +1172,7 @@ def generate_html_content(
 <body>
     <div class="header">
         <div class="header-title">
-            <span>🔍 SlideVQA Trace</span>
+            <span>🔍 FinQA Agent Trace</span>
             <span style="font-weight: normal; color: var(--text-secondary);">Query {query_id}</span>
         </div>
         <div class="header-meta">
@@ -1181,8 +1188,8 @@ def generate_html_content(
             <div class="question-label">Current Question</div>
             <div class="question-text">{escape_html(question)}</div>
             <div class="golden-answer">
-                <span>✅ Expected Answer:</span>
-                <strong>{escape_html(golden_answer)}</strong>
+                <span>✅ Expected DSL:</span>
+                <code>{escape_html(golden_program)}</code>
             </div>
         </div>
         

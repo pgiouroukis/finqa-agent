@@ -247,13 +247,34 @@ def clean_prediction_text(text: str, eos_token: str | None = None) -> str:
     return cleaned
 
 
+def normalize_arg(arg: str) -> str:
+    """
+    Normalize argument for comparison.
+    Converts const_X to numeric string so const_5 matches 5.0
+    """
+    arg = arg.strip()
+    if arg.startswith("#"):
+        return arg  # Keep step references as-is
+    
+    # Try to convert to number (handles const_X, percentages, etc.)
+    num = str_to_num(arg)
+    if num != "n/a":
+        # Convert to canonical string representation
+        # Use int if it's a whole number, else float
+        if isinstance(num, float) and num == int(num):
+            return str(int(num))
+        return str(num)
+    
+    return arg  # Keep as-is if not a number
+
+
 def equal_program(program1: Sequence[str], program2: Sequence[str]) -> bool:
     """
     Check if two DSL programs are symbolically equivalent.
     
     Uses sympy to simplify and compare the symbolic expressions.
     This handles cases where programs are written differently but
-    compute the same result (e.g., add(a,b) == add(b,a)).
+    compute the same result (e.g., add(a,b) == add(b,a), divide(637, const_5) == divide(637, 5.0)).
     """
     try:
         from sympy import simplify
@@ -274,8 +295,8 @@ def equal_program(program1: Sequence[str], program2: Sequence[str]) -> bool:
             return False
         op = step.split("(")[0].strip("|").strip()
         args = step.split("(")[1].strip("|").strip()
-        arg1 = args.split("|")[0].strip()
-        arg2 = args.split("|")[1].strip()
+        arg1 = normalize_arg(args.split("|")[0].strip())
+        arg2 = normalize_arg(args.split("|")[1].strip())
         step_dict_1[ind] = step
         if "table" in op:
             if step not in sym_map:
@@ -305,8 +326,8 @@ def equal_program(program1: Sequence[str], program2: Sequence[str]) -> bool:
                 return False
             op = step.split("(")[0].strip("|").strip()
             args = step.split("(")[1].strip("|").strip()
-            arg1 = args.split("|")[0].strip()
-            arg2 = args.split("|")[1].strip()
+            arg1 = normalize_arg(args.split("|")[0].strip())
+            arg2 = normalize_arg(args.split("|")[1].strip())
             step_dict_2[ind] = step
             if "table" in op:
                 if step not in sym_map:
@@ -329,8 +350,8 @@ def equal_program(program1: Sequence[str], program2: Sequence[str]) -> bool:
         step = step.strip()
         op = step.split("(")[0].strip("|").strip()
         args = step.split("(")[1].strip("|").strip()
-        arg1 = args.split("|")[0].strip()
-        arg2 = args.split("|")[1].strip()
+        arg1 = normalize_arg(args.split("|")[0].strip())
+        arg2 = normalize_arg(args.split("|")[1].strip())
         if "table" in op:
             return sym_map[step]
         if "#" in arg1:
