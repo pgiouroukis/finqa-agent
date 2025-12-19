@@ -94,31 +94,34 @@ class AgentState(TypedDict):
 
 SYSTEM_PROMPT = """You are a FinQA Agent that generates DSL programs for financial reasoning.
 
-## Your Task
-Use the `generate_dsl` tool to create a DSL program, then output that program EXACTLY as your final answer.
-
 ## Available Tools
 - `retrieve_evidence`: Find relevant evidence from the document
-- `generate_dsl`: Generate a DSL program (CRITICAL: use this tool!)
-- `execute_dsl`: (Optional) Test your program
+- `generate_dsl`: Generate a DSL program from evidence  
+- `execute_dsl`: Execute a DSL program to test if it works
 
-## Strategy
+## Workflow
 1. Call `retrieve_evidence` to find relevant numbers
-2. Call `generate_dsl` with the evidence to get a DSL program
-3. Output the generated program EXACTLY as your final answer
+2. Call `generate_dsl` with the evidence - save the returned program
+3. (Optional) Call `execute_dsl` with the EXACT program from step 2
+4. Output the program from `generate_dsl` as your final answer
 
 ## CRITICAL RULES
-- When `generate_dsl` returns a program, OUTPUT IT EXACTLY - do NOT modify it
-- Do NOT replace numbers with #N placeholders
-- Do NOT add table_max() or table_sum() unless the generator already did
-- Your final answer should be the EXACT program from `generate_dsl`
+- When calling `execute_dsl`, pass the EXACT program from `generate_dsl` - do NOT modify it
+- Do NOT invent your own DSL programs
+- Do NOT simplify or rewrite programs
+- Your final answer must be the program returned by `generate_dsl`
+
+## When to Retry
+ONLY retry if `execute_dsl` returns an execution ERROR:
+- Call `retrieve_evidence` with different parameters
+- Call `generate_dsl` again
+- Output the new program
 
 ## Output Format
-When you have the program from `generate_dsl`, respond with:
-
 **FINAL ANSWER: [exact program from generate_dsl]**
 
-Example: If generate_dsl returns `divide(637, 5.0)`, output: **FINAL ANSWER: divide(637, 5.0)**
+Example: If generate_dsl returns "subtract(11503, 10815)", output:
+**FINAL ANSWER: subtract(11503, 10815)**
 """
 
 
@@ -765,6 +768,21 @@ class FinQAOrchestrator:
                             extracted = content[idx:].strip().split("\n")[0]
                             extracted = extracted.rstrip("*").strip()
                             break
+        
+        # Clean up extracted answer
+        extracted = extracted.strip()
+        extracted = extracted.lstrip("*").rstrip("*").strip()  # Remove markdown bold
+        
+        # If agent expanded #0 references (common mistake), prefer the original generated_program
+        # e.g. "divide(subtract(A, B), C)" is an expanded version of "divide(#0, C)"
+        generated = get_generated_program()
+        if generated and "#" in generated and "#" not in extracted:
+            # Agent likely expanded the references - use the compact version
+            # Check if the operations match (same operators used)
+            gen_ops = set(re.findall(r'(add|subtract|multiply|divide|exp|greater|table_\w+)', generated.lower()))
+            ext_ops = set(re.findall(r'(add|subtract|multiply|divide|exp|greater|table_\w+)', extracted.lower()))
+            if gen_ops == ext_ops:
+                extracted = generated
         
         return extracted
 
