@@ -1,14 +1,12 @@
 """
 DSL Executor for FinQA.
 
-Ported from finetune_gemma (1).py - handles parsing and execution of 
-FinQA Domain Specific Language programs.
+Handles parsing and execution of FinQA Domain Specific Language programs.
 """
 from __future__ import annotations
 
 import re
 from typing import List, Sequence, Dict, Any, Tuple
-
 
 # All supported FinQA DSL operations
 ALL_OPS = [
@@ -23,7 +21,6 @@ ALL_OPS = [
     "table_sum",
     "table_average",
 ]
-
 
 def program_tokenization(original_program: str) -> List[str]:
     """

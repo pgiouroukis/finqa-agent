@@ -1,5 +1,201 @@
-.venv
-reranker-sweep
-reranker-sweep.zip
-__output__/
+########################################
+#  Python
+########################################
+**/archive
+**/deprecated
+**/test.ipynb
+**/dumps
+
+# shhh :)
+.claude/
+
+**/keys
+
+# AWS
+**/.aws
+
+# Operating-system files
+.DS_Store
+**/.DS_Store
+
+# Byte-compiled / extension artefacts
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Packaging / distribution
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Tests & coverage
+htmlcov/
+.tox/
+.nox/
+.coverage*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+/coverage
+.nyc_output
+*.lcov
+
+# Translations
+*.mo
+*.pot
+
+# Databases / runtime logs
+*.log
+local_settings.py
+db.sqlite3*
+instance/
+.webassets-cache
+
+# Framework-specific
+.scrapy/
+docs/_build/
+.pybuilder/
+target/
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+.pdm.toml
+.pdm-python
+.pdm-build/
+__pypackages__/
+
+# Virtual-envs
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Static analysis & debug
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+
+# IDE / editor
+.spyderproject
+.spyproject
+.ropeproject
+.idea/
+.vscode-test/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Misc Python
+.pypirc
+
+########################################
+#  Node / JS / TS
+########################################
+# Logs & diagnostics
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+jspm_packages/
+bower_components/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp*
+.web_modules/
+
+# Build / output
+build/Release
+.next/
+.nuxt/
+.out/
+.vuepress/dist/
+.docusaurus/
+.serverless/
+.fusebox/
+.dynamodb/
+.vercel/
+**/.vitepress/dist
+**/.vitepress/cache
+dist/
+out/
+build/
+
+# Caches
+.cache/
+.parcel-cache/
+.temp/
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+.eslintcache
+.stylelintcache
+.yarn-integrity
+
+# Tools / misc
+.lock-wscript
+.grunt/
+.tern-port
+.vscode-test/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+########################################
+#  Environment & secrets
+########################################
+.env*
+
+########################################
+#  Miscellaneous
+########################################
+*.pem
+*.tgz

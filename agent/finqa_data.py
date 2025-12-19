@@ -8,12 +8,45 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Sequence
-
+from tabulate import tabulate
 
 # Default dataset paths
-DEFAULT_TRAIN_PATH = "FinQA/dataset/train.json"
-DEFAULT_DEV_PATH = "FinQA/dataset/dev.json"
-DEFAULT_TEST_PATH = "FinQA/dataset/test.json"
+DEFAULT_TRAIN_PATH = "./data/train.json"
+DEFAULT_DEV_PATH = "./data/dev.json"
+DEFAULT_TEST_PATH = "./data/test.json"
+
+
+def display_example(example: dict):
+    return "\n".join([
+        "\n".join(example['pre_text']),
+        str(tabulate(example['table'], headers="firstrow", tablefmt="simple")),
+        "\n".join([ text for text in list(example['post_text']) if text != "." ]),
+    ])
+
+def format_table(example: dict) -> dict:
+    table = list(example['table'])
+    if len(table) == 0: return { }
+    table_dict = { }
+    header = table[0]
+    for n, row in enumerate(table[1:]):
+        formatted_row = [ header[0] ] if header[0] != '' else [ ]
+        for idx in range(len(header) - 1):
+            pos = idx + 1
+            formatted_row.append(f"the {row[0]} of {header[pos]} is {row[pos]} ;")    # FinQA format
+        rowstring = " ".join(formatted_row)
+        table_dict[f"table_{n + 1}"] = rowstring
+    return table_dict
+
+def format_text(example: dict) -> dict:
+    pre_text_list = list(example['pre_text'])
+    pos_text_list = list(example['post_text'])
+    pre_text_list.extend(pos_text_list)
+    text_dict = { }
+    for idx, entry in enumerate(pre_text_list):
+        if (entry == "."): continue
+        text_dict[f"text_{idx}"] = entry
+    return text_dict
+
 
 
 def load_finqa_split(path: str, max_samples: int = 0) -> List[Dict]:

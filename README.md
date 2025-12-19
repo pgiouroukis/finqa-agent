@@ -74,19 +74,6 @@ Two metrics are reported (using symbolic equivalence via sympy):
 1. **Generator Accuracy**: Whether the `generate_dsl` tool's raw output matches the gold program
 2. **Agent Accuracy**: Whether the agent's final answer matches the gold program
 
-Example output:
-```
-┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┓
-┃ Metric             ┃ Count ┃ Accuracy ┃
-┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━┩
-│ Total Queries      │ 10    │          │
-│ Generator Accuracy │ 3     │ 30.0%    │
-│ Agent Accuracy     │ 3     │ 30.0%    │
-│ Avg Time           │ 4.1s  │          │
-│ Avg Tool Calls     │ 2.0   │          │
-└────────────────────┴───────┴──────────┘
-```
-
 ## Project Structure
 
 ```

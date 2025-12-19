@@ -9,7 +9,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-
 def generate_html_trace(log_path: Path | str, output_path: Path | str | None = None) -> str:
     """
     Generate an HTML trace from an agent_log.jsonl file.

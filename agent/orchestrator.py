@@ -21,9 +21,8 @@ from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 
 from .logger import AgentLogger, get_logger, reset_logger
-from .dsl_executor import execute_dsl
+from .dsl.executor import execute_dsl
 from .finqa_data import get_all_evidence_pieces, format_evidence_for_generator
-
 
 # =========================================
 # Module-level State
@@ -656,7 +655,7 @@ class FinQAOrchestrator:
         generated_program = get_generated_program()
         
         # Evaluate GENERATOR tool accuracy (raw tool output)
-        from .dsl_executor import evaluate_program_prediction
+        from .dsl.executor import evaluate_program_prediction
         generator_eval = {}
         if generated_program and q_data.get("program"):
             generator_eval = evaluate_program_prediction(
