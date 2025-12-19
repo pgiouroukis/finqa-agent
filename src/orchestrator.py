@@ -92,47 +92,35 @@ class AgentState(TypedDict):
 # System Prompt
 # =========================================
 
-SYSTEM_PROMPT = """You are a FinQA Agent - an expert at generating DSL programs for financial reasoning.
+SYSTEM_PROMPT = """You are a FinQA Agent that generates DSL programs for financial reasoning.
 
 ## Your Task
-Generate a Domain Specific Language (DSL) program that answers financial questions. Your goal is to output the correct DSL program, NOT the numerical result.
+Use the `generate_dsl` tool to create a DSL program, then output that program EXACTLY as your final answer.
 
 ## Available Tools
-- `list_tools`: See all available tools
-- `retrieve_evidence`: Find relevant text and table data from the document
-- `generate_dsl`: Generate a DSL program based on question and evidence
-- `execute_dsl`: (Optional) Test your DSL program to verify it works
-
-## DSL Format
-The DSL supports:
-- `add(a, b)`, `subtract(a, b)`, `multiply(a, b)`, `divide(a, b)`, `exp(a, b)`
-- `greater(a, b)` - returns "yes" or "no"
-- `table_max(row)`, `table_min(row)`, `table_sum(row)`, `table_average(row)`
-- Use `#N` to reference the result of step N (e.g., `divide(#0, 100)`)
-- Use `const_N` for constants (e.g., `const_100` = 100)
-
-Examples:
-- `divide(637, const_5)` → divides 637 by 5
-- `subtract(100, 50), divide(#0, 2)` → (100-50)/2
+- `retrieve_evidence`: Find relevant evidence from the document
+- `generate_dsl`: Generate a DSL program (CRITICAL: use this tool!)
+- `execute_dsl`: (Optional) Test your program
 
 ## Strategy
-1. Retrieve evidence to find the relevant numbers
-2. Generate a DSL program using those numbers
-3. (Optional) Execute to verify correctness
-4. Output your final DSL program
+1. Call `retrieve_evidence` to find relevant numbers
+2. Call `generate_dsl` with the evidence to get a DSL program
+3. Output the generated program EXACTLY as your final answer
 
-## IMPORTANT RULES
-- Your FINAL ANSWER must be the DSL PROGRAM, not a number
-- Be concise - just output the program
-- Maximum 6-8 tool calls
+## CRITICAL RULES
+- When `generate_dsl` returns a program, OUTPUT IT EXACTLY - do NOT modify it
+- Do NOT replace numbers with #N placeholders
+- Do NOT add table_max() or table_sum() unless the generator already did
+- Your final answer should be the EXACT program from `generate_dsl`
 
 ## Output Format
-When you have the program, respond with:
+When you have the program from `generate_dsl`, respond with:
 
-**FINAL ANSWER: [your DSL program]**
+**FINAL ANSWER: [exact program from generate_dsl]**
 
-Example: **FINAL ANSWER: divide(637, const_5)**
+Example: If generate_dsl returns `divide(637, 5.0)`, output: **FINAL ANSWER: divide(637, 5.0)**
 """
+
 
 
 # =========================================
@@ -237,7 +225,9 @@ def create_tools(logger: AgentLogger) -> list:
         to generate a Domain Specific Language program.
         
         Args:
-            evidence: The evidence context (from retrieve_evidence or your summary)
+            evidence: The evidence context. Can be:
+                      - Actual text evidence
+                      - Evidence IDs like "pre_1, post_0, table_2" (will be resolved)
         
         Returns:
             Dict with the generated DSL program
@@ -245,7 +235,7 @@ def create_tools(logger: AgentLogger) -> list:
         from .finqa_tools import get_generator
         
         track_tool_call("generate_dsl")
-        logger.log_tool_call("generate_dsl", {"evidence_length": len(evidence)})
+        logger.log_tool_call("generate_dsl", {"evidence_input": evidence[:100] + "..." if len(evidence) > 100 else evidence})
         
         start = time.time()
         
@@ -257,9 +247,12 @@ def create_tools(logger: AgentLogger) -> list:
         
         question = entry["question"]
         
+        # Resolve evidence IDs to actual text if needed
+        resolved_evidence = _resolve_evidence_ids(evidence, entry)
+        
         # Generate DSL program
         generator = get_generator()
-        gen_result = generator.generate(question, evidence)
+        gen_result = generator.generate(question, resolved_evidence)
         
         # Track the generated program for evaluation
         set_generated_program(gen_result["program"])
@@ -275,6 +268,69 @@ def create_tools(logger: AgentLogger) -> list:
         
         logger.log_tool_result("generate_dsl", result, elapsed_ms)
         return result
+    
+    def _resolve_evidence_ids(evidence: str, entry: dict) -> str:
+        """
+        Resolve evidence IDs to actual text content.
+        
+        If evidence looks like "pre_1, post_0, table_2", resolve these to actual text.
+        If evidence is already text (contains sentences), return as-is.
+        """
+        import re
+        
+        # Check if this looks like a list of IDs (short, contains underscores, no sentences)
+        evidence_clean = evidence.strip()
+        
+        # If it contains long text (sentences), assume it's already resolved
+        if len(evidence_clean) > 100 or ". " in evidence_clean:
+            return evidence
+        
+        # Parse evidence IDs
+        id_pattern = r'(pre_\d+|post_\d+|table_\d+)'
+        ids = re.findall(id_pattern, evidence_clean)
+        
+        if not ids:
+            return evidence  # Not IDs, return as-is
+        
+        # Build lookup for entry content
+        resolved_parts = []
+        
+        pre_text = entry.get("pre_text", [])
+        post_text = entry.get("post_text", [])
+        table = entry.get("table", [])
+        header = table[0] if table else []
+        
+        for eid in ids:
+            if eid.startswith("pre_"):
+                idx = int(eid.split("_")[1])
+                if 0 <= idx < len(pre_text):
+                    resolved_parts.append(pre_text[idx])
+            elif eid.startswith("post_"):
+                idx = int(eid.split("_")[1])
+                if 0 <= idx < len(post_text):
+                    resolved_parts.append(post_text[idx])
+            elif eid.startswith("table_"):
+                idx = int(eid.split("_")[1])
+                # Generator trained with input_gold expects natural language format
+                # Format: "the {row_name} of {column} is {value} ;"
+                if 1 <= idx < len(table) and header:
+                    row = table[idx]
+                    formatted_parts = []
+                    row_name = row[0].strip() if row else ""
+                    if header[0].strip():
+                        formatted_parts.append(header[0].strip())
+                    for col_idx in range(1, min(len(header), len(row))):
+                        col_name = header[col_idx].strip()
+                        value = row[col_idx].strip()
+                        if col_name and value:
+                            formatted_parts.append(f"the {row_name} of {col_name} is {value} ;")
+                    if formatted_parts:
+                        resolved_parts.append(" ".join(formatted_parts))
+        
+        if resolved_parts:
+            return " ".join(resolved_parts)
+        
+        return evidence  # Fallback
     
     @tool
     def execute_dsl_tool(program: str) -> dict[str, Any]:
@@ -626,10 +682,11 @@ class FinQAOrchestrator:
             "full_response": agent_answer,
             "generated_program": generated_program,
             "golden_program": q_data.get("program", ""),
-            # Generator tool metrics
-            "generator_correct": generator_eval.get("program_accuracy", False),
-            # Agent final answer metrics  
-            "agent_correct": agent_eval.get("program_accuracy", False),
+            # Generator tool metrics (combined: symbolic OR execution match)
+            "generator_correct": generator_eval.get("correct", False),
+            # Agent final answer metrics (combined: symbolic OR execution match)
+            "agent_correct": agent_eval.get("correct", False),
+            "program_accuracy": generator_eval.get("program_accuracy", False),
             "execution_accuracy": generator_eval.get("execution_accuracy", False),
             "predicted_numerical": generator_eval.get("predicted_numerical"),
             "success": success,

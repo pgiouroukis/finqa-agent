@@ -84,6 +84,9 @@ def get_all_evidence_pieces(entry: Dict) -> Dict[str, str]:
     Extract all potential evidence pieces from an example.
     
     Returns dict mapping evidence_id -> evidence_text for retriever to score.
+    
+    NOTE: Table rows are formatted in natural language to match retriever training:
+    "the {row_name} of {column} is {value} ;"
     """
     evidence = {}
     
@@ -99,12 +102,32 @@ def get_all_evidence_pieces(entry: Dict) -> Dict[str, str]:
         if text.strip() and text.strip() != ".":
             evidence[f"post_{i}"] = text.strip()
     
-    # Table rows
+    # Table rows - format in natural language to match retriever training
+    # Format: "the {row_name} of {column} is {value} ;"
     table = entry.get("table") or []
-    for i, row in enumerate(table):
-        row_text = " | ".join([cell.strip() for cell in row if cell.strip()])
-        if row_text:
-            evidence[f"table_{i}"] = row_text
+    if len(table) > 1:  # Need at least header + 1 data row
+        header = table[0]
+        for i, row in enumerate(table[1:], start=1):  # Skip header, index from 1
+            if not any(cell.strip() for cell in row):
+                continue
+            
+            # Build natural language row
+            formatted_parts = []
+            row_name = row[0].strip() if row else ""
+            
+            # Add first column if non-empty
+            if header[0].strip():
+                formatted_parts.append(header[0].strip())
+            
+            # Add "the {row_name} of {column} is {value}" for each column
+            for col_idx in range(1, min(len(header), len(row))):
+                col_name = header[col_idx].strip()
+                value = row[col_idx].strip()
+                if col_name and value:
+                    formatted_parts.append(f"the {row_name} of {col_name} is {value} ;")
+            
+            if formatted_parts:
+                evidence[f"table_{i}"] = " ".join(formatted_parts)
     
     return evidence
 

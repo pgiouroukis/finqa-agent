@@ -83,11 +83,15 @@ def print_summary(results: list[dict], console: Console) -> None:
         console.print("[yellow]No results to summarize[/yellow]")
         return
     
-    # Generator tool accuracy (raw output from generate_dsl tool)
+    # Generator tool accuracy (combined: symbolic OR execution match)
     generator_correct = sum(1 for r in results if r.get("generator_correct", False))
     
-    # Agent accuracy (final answer output by agent)
+    # Agent accuracy (combined: symbolic OR execution match)
     agent_correct = sum(1 for r in results if r.get("agent_correct", False))
+    
+    # Breakdown metrics
+    symbolic_match = sum(1 for r in results if r.get("program_accuracy", False))
+    execution_match = sum(1 for r in results if r.get("execution_accuracy", False))
     
     console.print()
     console.print("=" * 60)
@@ -99,8 +103,10 @@ def print_summary(results: list[dict], console: Console) -> None:
     table.add_column("Accuracy")
     
     table.add_row("Total Queries", str(total), "")
-    table.add_row("[bold cyan]Generator Accuracy[/bold cyan]", str(generator_correct), f"[bold cyan]{100*generator_correct/total:.1f}%[/bold cyan]")
-    table.add_row("[bold green]Agent Accuracy[/bold green]", str(agent_correct), f"[bold green]{100*agent_correct/total:.1f}%[/bold green]")
+    table.add_row("[bold cyan]Generator Correct[/bold cyan]", str(generator_correct), f"[bold cyan]{100*generator_correct/total:.1f}%[/bold cyan]")
+    table.add_row("[bold green]Agent Correct[/bold green]", str(agent_correct), f"[bold green]{100*agent_correct/total:.1f}%[/bold green]")
+    table.add_row("[dim]  ↳ Symbolic Match[/dim]", f"[dim]{symbolic_match}[/dim]", f"[dim]{100*symbolic_match/total:.1f}%[/dim]")
+    table.add_row("[dim]  ↳ Execution Match[/dim]", f"[dim]{execution_match}[/dim]", f"[dim]{100*execution_match/total:.1f}%[/dim]")
     
     avg_time = sum(r.get("elapsed_seconds", 0) for r in results) / total
     avg_tools = sum(r.get("tool_call_count", 0) for r in results) / total
@@ -116,6 +122,10 @@ def print_summary(results: list[dict], console: Console) -> None:
         "generator_accuracy": round(100 * generator_correct / total, 2),
         "agent_correct": agent_correct,
         "agent_accuracy": round(100 * agent_correct / total, 2),
+        "symbolic_match": symbolic_match,
+        "symbolic_match_pct": round(100 * symbolic_match / total, 2),
+        "execution_match": execution_match,
+        "execution_match_pct": round(100 * execution_match / total, 2),
         "avg_time_seconds": round(avg_time, 2),
         "avg_tool_calls": round(avg_tools, 2),
     }

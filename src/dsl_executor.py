@@ -419,6 +419,9 @@ def evaluate_program_prediction(
         program_accuracy = False
         exec_error = f"program_equivalence_failed: {exc}"
     
+    # Combined: correct if EITHER symbolic equivalence OR execution matches
+    correct = program_accuracy or execution_accuracy
+    
     if invalid_flag:
         exec_error = exec_error or "invalid program or execution failure"
     if program_accuracy and invalid_flag == 0 and exe_res != gold_numerical:
@@ -428,6 +431,7 @@ def evaluate_program_prediction(
         "predicted_numerical": None if invalid_flag else exe_res,
         "execution_accuracy": execution_accuracy,
         "program_accuracy": program_accuracy,
+        "correct": correct,  # Combined: symbolic OR execution match
         "execution_error": exec_error,
     }
 
