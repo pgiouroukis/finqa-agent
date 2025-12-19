@@ -13,7 +13,7 @@ The orchestrator LLM receives the **full document context** (pre_text, table, po
 
 - Python 3.12.3
 - Ollama with a model installed (e.g., `qwen2.5:3b`)
-- CUDA-compatible GPU (tested on A100)
+- CUDA-compatible GPU (tested on 3090)
 
 ## Setup
 
