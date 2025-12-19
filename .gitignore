@@ -19,8 +19,6 @@
 # Retriever model (on HF: )
 **/retriever/model/
 
-agent/retriever/model/
-
 # AWS
 **/.aws
 
