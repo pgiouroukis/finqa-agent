@@ -119,7 +119,7 @@ class DSLGenerator:
         # Clean up the prediction
         if "\n" in generated:
             generated = generated.split("\n")[0].strip()
-        
+
         return {
             "program": generated,
             "prompt_length": inputs["input_ids"].shape[1],

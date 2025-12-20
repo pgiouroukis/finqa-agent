@@ -104,7 +104,7 @@ SYSTEM_PROMPT = """You are a FinQA Agent that generates DSL programs for financi
 
 ## Workflow
 1. Call `retrieve_evidence` to find relevant numbers
-2. Call `generate_dsl` with the evidence - save the returned program
+2. Then, always call `generate_dsl` with the evidence - save the returned program
 3. (Optional) Call `execute_dsl` with the EXACT program from step 2
 4. Output the program from `generate_dsl` as your final answer
 
@@ -346,28 +346,65 @@ def create_tools() -> list:
 # Graph Nodes
 # =========================================
 
+def _parse_json_tool_call(content: str) -> list[dict] | None:
+    """
+    Parse JSON tool calls from text content.
+
+    Some models (like qwen3:4b with long prompts) output tool calls as JSON text
+    instead of using the proper tool calling format. This function detects and
+    parses those cases.
+    """
+    if not content:
+        return None
+
+    content = content.strip()
+
+    # Try parsing as direct JSON with name/arguments structure
+    try:
+        parsed = json.loads(content)
+        if isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
+            return [{
+                "name": parsed["name"],
+                "args": parsed["arguments"],
+                "id": parsed.get("id", parsed["name"]),
+                "type": "tool_call",
+            }]
+    except json.JSONDecodeError:
+        pass
+
+    return None
+
+
 def create_agent_graph(
     model: str = "qwen3:4b",
 ) -> StateGraph:
     """Create the LangGraph agent."""
-    
+
     # Initialize LLM with thinking disabled for Qwen3 models
     # This significantly speeds up inference by avoiding extended reasoning
     extra_kwargs = {"think": False} if "qwen3" in model.lower() else {}
     llm = ChatOllama(
-        model=model, 
+        model=model,
         temperature=0,
         **extra_kwargs,
     )
-    
+
     # Create tools and bind to LLM
     tools = create_tools()
     tools_by_name = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools)
-    
+
     def agent_node(state: AgentState) -> dict:
         """The main agent node - calls the LLM."""
         response = llm_with_tools.invoke(state["messages"])
+
+        # Fallback: if model output JSON tool call as text, parse and inject it
+        has_tool_calls = hasattr(response, "tool_calls") and response.tool_calls
+        if not has_tool_calls and hasattr(response, "content") and response.content:
+            parsed_calls = _parse_json_tool_call(str(response.content))
+            if parsed_calls:
+                response.tool_calls = parsed_calls
+
         return {"messages": state["messages"] + [response]}
     
     def tool_node(state: AgentState) -> dict:
